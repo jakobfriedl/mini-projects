@@ -1,4 +1,4 @@
-import strutils, sequtils, os, sugar, tables, regex
+import strutils, sequtils, os, tables
 
 if paramCount() != 1: 
     echo "Usage: nim c -r charactercount.nim <file>"
